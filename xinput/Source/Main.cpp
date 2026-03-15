@@ -1,7 +1,8 @@
+#include <iomanip>
 #include <iostream>
+#include <thread>
 #include <Windows.h>
 #include <Xinput.h>
-#include <thread>
 
 static const char* IsButtonPressed(const XINPUT_STATE& state, WORD button)
 {
@@ -59,8 +60,29 @@ static void GoToEndConsole()
 	std::cout << "\033[" LINE_COUNT "B\n";
 }
 
+struct XINPUT_CAPABILITIES_EX
+{
+	XINPUT_CAPABILITIES Capabilities;
+	WORD vendorId;
+	WORD productId;
+	WORD revisionId;
+	DWORD a4; //unknown
+};
+
+typedef DWORD(_stdcall* _XInputGetCapabilitiesEx)(DWORD a1, DWORD dwUserIndex, DWORD dwFlags, XINPUT_CAPABILITIES_EX* pCapabilities);
+_XInputGetCapabilitiesEx XInputGetCapabilitiesEx;
+
 int main()
 {
+	HMODULE moduleHandle = LoadLibrary(TEXT("XInput1_4.dll"));
+	if (moduleHandle == NULL)
+	{
+		std::cout << "Failed to load XInput1_4 library\n";
+		return 1;
+	}
+
+	XInputGetCapabilitiesEx = (_XInputGetCapabilitiesEx)GetProcAddress(moduleHandle, (char*)108);
+
 	XINPUT_CAPABILITIES capabilities;
 	ZeroMemory(&capabilities, sizeof(XINPUT_CAPABILITIES));
 	DWORD result = XInputGetCapabilities(0, 0, &capabilities);
@@ -76,6 +98,14 @@ int main()
 
 		// Returns false even in a Xbox Series X/S controller, not sure why
 		// std::cout << "Supports rumble: " << ((capabilities.Flags & XINPUT_CAPS_FFB_SUPPORTED) != 0) << "\n";
+
+		XINPUT_CAPABILITIES_EX capsEx;
+		if (XInputGetCapabilitiesEx(1, 0, 0, &capsEx) == ERROR_SUCCESS)
+		{
+			std::ios_base::fmtflags f(std::cout.flags());
+			std::cout << "VID: 0x" << std::hex << std::setfill('0') << std::setw(4) << capsEx.vendorId << " | PID: 0x" << std::setfill('0') << std::setw(4) << capsEx.productId << "\n";
+			std::cout.flags(f);
+		}
 	}
 	else if (result == ERROR_DEVICE_NOT_CONNECTED)
 	{
@@ -127,7 +157,7 @@ int main()
 		std::cout << "Y:                  " << IsButtonPressed(state, XINPUT_GAMEPAD_Y) << "\n";
 
 		std::cout << "\n";
-		
+
 		#define PADDING "              " // To clear large numbers
 		std::cout << "- Analog Buttons:\n";
 		std::cout << "Raw:\n";
